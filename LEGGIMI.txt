@@ -1,17 +1,23 @@
-CURVE DI ROTAZIONE 1.0 – la materia che manca nelle galassie
+CURVE DI ROTAZIONE 1.1 – la materia che manca nelle galassie
 © 2026 Edoardo Battistel · licenza BSD-3
 
 Che cosa fa
 -----------
-Mostra le curve di rotazione di 177 galassie e quanta massa manca rispetto a quella che si vede:
+Mostra le curve di rotazione di 409 galassie e quanta massa manca rispetto a quella che si vede:
   - 175 galassie del catalogo SPARC (Lelli, McGaugh e Schombert 2016): velocità misurate dal gas
     (21 cm e Hα) e componenti visibili (gas, disco e bulbo dalle immagini Spitzer a 3,6 µm);
   - M 33, Galassia del Triangolo (Kam et al. 2017; solo la curva, senza componenti visibili);
+  - (1.1) 232 galassie in più dalla raccolta di Flynn 2026 (Zenodo 19563417, CC BY 4.0): THINGS
+    (de Blok et al. 2008: M 81, M 64, M 94, M 66, NGC 925, NGC 3621), LITTLE THINGS (Oh et al. 2015,
+    23 nane) e WALLABY DR2 (Deg et al. 2022, 203 galassie): solo la curva, tutta la massa nell'alone.
+    Le 16 curve THINGS/LITTLE THINGS di galassie già in SPARC compaiono come seconda misura;
   - la Via Lattea: la misura di Edoardo con SALSA (ultimo curva_di_rotazione.csv del programma
-    Idrogeno) + Eilers et al. 2019 (5–25 kpc); stelle dal modello I di Pouliasis et al. 2017.
-Per ogni galassia adatta quattro modelli: aloni di materia oscura NFW (cuspide), Burkert e isotermo
-(nucleo) e MOND (niente materia oscura), con il rapporto massa/luce del disco libero (vicino a 0,5)
-o fisso. Confronta con gli adattamenti pubblicati da Li et al. 2020. Grafici d'insieme: Tully-Fisher
+    Idrogeno) + Eilers et al. 2019 (5–25 kpc); stelle dal modello I di Pouliasis et al. 2017,
+    gas (HI + H2) da McMillan 2017 (1.1).
+Per ogni galassia adatta cinque modelli: aloni di materia oscura NFW (cuspide), Burkert e isotermo
+(nucleo), Einasto (1.1, dalle simulazioni) e MOND (niente materia oscura), con il rapporto massa/luce
+del disco libero (vicino a 0,5) o fisso, e (1.1) distanza e inclinazione libere entro gli errori come
+Li et al. 2020 oppure fisse. Confronta con gli adattamenti pubblicati da Li et al. 2020. Grafici d'insieme: Tully-Fisher
 barionica, relazione delle accelerazioni radiali (McGaugh et al. 2016), frazione di materia oscura.
 Immagini: Legacy Survey DR10 (ottico) e unWISE (infrarosso); fuori dall'area di Legacy, DSS2.
 
@@ -34,10 +40,11 @@ Comandi
   python3 curve_rotazione.py --scala 200        dimensione del testo all'avvio
   python3 curve_rotazione.py --galassia NGC3198 scheda PDF + PNG senza finestra (anche M33, VIA_LATTEA)
   python3 curve_rotazione.py --tutte            tutte le galassie: CSV + PDF senza finestra
+                                                (opzioni --ml libero|fisso, --di libere|fisse)
 
 Compilare e installare
 ----------------------
-  cd ~/Claude/Astropy/programma_curve_rotazione/versione_1.0
+  cd ~/Claude/Astropy/programma_curve_rotazione/versione_1.1
   bash crea_eseguibile_ubuntu.sh 2>&1 | tee ~/Claude/Astropy/curve_rotazione_compila.txt
 Fa l'autotest, crea dist/CurveRotazione, rifà l'autotest sull'eseguibile e lo installa nel menu
 e sulla Scrivania (StartupWMClass=Curverotazione).
@@ -55,4 +62,6 @@ Fonti
 Lelli, McGaugh & Schombert 2016, AJ 152, 157 (SPARC) · Li, Lelli, McGaugh & Schombert 2020, ApJS 247, 31 ·
 McGaugh, Lelli & Schombert 2016, PRL 117, 201101 · Kam et al. 2017, AJ 154, 41 (M 33) ·
 Eilers, Hogg, Rix & Ness 2019, ApJ 871, 120 · Pouliasis, Di Matteo & Haywood 2017, A&A 598, A66 ·
-Navarro, Frenk & White 1996 · Burkert 1995 · Milgrom 1983.
+Navarro, Frenk & White 1996 · Burkert 1995 · Einasto 1965 · Milgrom 1983 · McMillan 2017, MNRAS 465, 76 ·
+Flynn 2026, Zenodo 10.5281/zenodo.19425428 · de Blok et al. 2008, AJ 136, 2648 · Oh et al. 2015, AJ 149, 180 ·
+Deg et al. 2022, PASA 39, e059.

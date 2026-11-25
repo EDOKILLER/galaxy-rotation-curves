@@ -28,9 +28,9 @@ from pathlib import Path
 
 import numpy as np
 
-VERSIONE = "1.0"
+VERSIONE = "1.1"
 FIRMA = "© 2026 Edoardo Battistel"
-UA = "CurveRotazione/1.0 (Python urllib)"
+UA = "CurveRotazione/1.1 (Python urllib)"
 TEMPO_MAX = 60
 
 G = 4.30091e-6            # kpc (km/s)² / Msun
@@ -59,10 +59,11 @@ CARTELLE_SEME = [CARTELLA_DATI / "prova_rete",
 HARVARD = "https://vizier.cfa.harvard.edu/viz-bin/asu-tsv"
 SPARC_SITO = "https://astroweb.case.edu/SPARC/"
 
-MODELLI = ("NFW", "Burkert", "pISO", "MOND")
+MODELLI = ("NFW", "Burkert", "pISO", "Einasto", "MOND")
 NOMI_MODELLI_EN = {"NFW": "NFW halo (cuspy)", "Burkert": "Burkert halo (cored)",
-                   "pISO": "pseudo-isothermal halo (cored)", "MOND": "MOND (no halo)"}
-COLORI = {"NFW": "#d62728", "Burkert": "#1f77b4", "pISO": "#9467bd", "MOND": "#e69f00",
+                   "pISO": "pseudo-isothermal halo (cored)",
+                   "Einasto": "Einasto halo (simulations, rolling slope)", "MOND": "MOND (no halo)"}
+COLORI = {"NFW": "#d62728", "Burkert": "#1f77b4", "pISO": "#9467bd", "Einasto": "#8c564b", "MOND": "#e69f00",
           "oss": "#111111", "gas": "#2ca02c", "disco": "#1f9bd1", "bulbo": "#c2185b", "barioni": "#6b7280",
           "edoardo": "#f97316", "eilers": "#0f766e"}
 
@@ -84,9 +85,16 @@ FAMOSE = {
     "NGC6503": ("NGC 6503", "spirale solitaria ai margini del Vuoto Locale"),
     "NGC0300": ("NGC 300", "spirale del gruppo dello Scultore"),
     "IC2574": ("IC 2574", "galassia nana irregolare con un grande nucleo di materia oscura"),
+    "NGC3031": ("M 81", "Galassia di Bode (THINGS; senza componenti visibili)"),
+    "NGC4826": ("M 64", "Galassia Occhio Nero (THINGS; senza componenti visibili)"),
+    "NGC4736": ("M 94", "spirale con un anello di stelle giovani (THINGS; senza componenti visibili)"),
+    "NGC3627": ("M 66", "spirale del Tripletto del Leone (THINGS; senza componenti visibili)"),
+    "WLM": ("WLM", "nana irregolare del Gruppo Locale (LITTLE THINGS; senza componenti visibili)"),
+    "IC1613": ("IC 1613", "nana irregolare del Gruppo Locale (LITTLE THINGS; senza componenti visibili)"),
 }
 ORDINE_FAMOSE = ["VIA_LATTEA", "NGC3198", "NGC2403", "DDO154", "UGC00128", "M33", "NGC5055", "NGC6946",
-                 "NGC3992", "NGC0891", "NGC7331", "NGC2841", "UGC02885", "NGC6503", "NGC0300", "IC2574"]
+                 "NGC3992", "NGC0891", "NGC7331", "NGC2841", "UGC02885", "NGC6503", "NGC0300", "IC2574",
+                 "NGC3031", "NGC4826", "NGC4736", "NGC3627", "WLM", "IC1613"]
 
 # ------------------------------------------------------------------ Via Lattea: Eilers+2019 (tabella 1)
 EILERS_2019 = np.array([
@@ -108,7 +116,8 @@ SISTEMATICO_EILERS = 0.03     # 3 % di errore sistematico aggiunto (come Eilers+
 MW_BULBO = (1.067e10, 0.30)                     # Msun, b (kpc)
 MW_DISCHI = ((3.944e10, 5.30, 0.25), (3.944e10, 2.60, 0.80))   # Msun, a, b (kpc)
 MW_MASSA_STELLE = MW_BULBO[0] + sum(d[0] for d in MW_DISCHI)
-MW_MASSA_GAS = 1.2e10     # HI + H2 (ordine di grandezza; solo per la Tully-Fisher)
+# gas della Via Lattea (McMillan 2017, MNRAS 465, 76): Σ(R) = Σ0 exp(−Rm/R − R/Rd), elio compreso
+MW_GAS = (("HI", 53.1, 7.0, 4.0), ("H2", 2180.0, 1.5, 12.0))     # nome, Σ0 (Msun/pc²), Rd, Rm (kpc)
 R_SOLE_EILERS = 8.122
 
 
@@ -294,6 +303,72 @@ def _li2020(avvisa, rete):
     return li
 
 
+ZENODO_CORPUS = "https://zenodo.org/records/19563417/files/rotation_curve_corpus_v7.json?download=1"
+SURVEY_NOMI = {"THINGS": "THINGS (de Blok+2008)", "LITTLE_THINGS": "LITTLE THINGS (Oh+2015)",
+               "WALLABY": "WALLABY DR2 (Deg+2022)"}
+ERRORE_WALLABY = (5.0, 0.05)      # WALLABY non dà errori: 5 km/s + 5 % (stima prudente)
+
+
+def chiave_normale(nome):
+    """«DDO_154» → «DDO154», «NGC_2366» → «NGC2366», «DDO_87» → «DDO087» (come SPARC)."""
+    n = nome.replace("_", "").replace(" ", "").upper()
+    m = re.match(r"^(DDO|NGC|UGC|IC|UGCA)(\d+)(.*)$", n)
+    if m:
+        cifre = {"DDO": 3, "UGC": 5, "NGC": 4, "IC": 4, "UGCA": 3}[m.group(1)]
+        n = f"{m.group(1)}{int(m.group(2)):0{cifre}d}{m.group(3)}"
+    return n
+
+
+def _raccolta(avvisa, rete):
+    """Raccolta di curve di rotazione 2026 (Flynn, Zenodo 19563417, CC BY 4.0): THINGS, LITTLE THINGS,
+    WALLABY DR2 (SPARC c'è già). Restituisce la lista delle galassie lette."""
+    try:
+        b = _file_cache("rotation_curve_corpus_v7.json", ZENODO_CORPUS, avvisa, rete, minimo=500000,
+                        controllo=lambda x: x[:1] == b"{")
+    except Exception as e:
+        avvisa(f"raccolta Zenodo non disponibile ({type(e).__name__}: {e})")
+        return []
+    if b is None:
+        return []
+    try:
+        dati = json.loads(b.decode("utf-8"))
+    except Exception as e:
+        avvisa(f"raccolta Zenodo non leggibile: {type(e).__name__}: {e}")
+        return []
+    uscita = []
+    for x in dati.get("galaxies", []):
+        survey = x.get("survey")
+        if survey not in SURVEY_NOMI:
+            continue
+        righe = []
+        if survey == "WALLABY":
+            for q in x.get("rotation_curve") or []:
+                R, V = numero(q.get("rad_kpc")), numero(q.get("vrot_kms"))
+                if np.isfinite(R) and np.isfinite(V) and R > 0:
+                    righe.append([R, V, ERRORE_WALLABY[0] + ERRORE_WALLABY[1] * V, 0, 0, 0])
+        else:
+            for q in x.get("data") or []:
+                R = numero(q.get("Rad"))
+                V = numero(q.get("Vobs", q.get("Vrot")))
+                e = numero(q.get("errV", q.get("e_Vrot")))
+                if np.isfinite(R) and np.isfinite(V) and R > 0:
+                    righe.append([R, V, e if np.isfinite(e) and e > 0 else 5.0, 0, 0, 0])
+        if len(righe) < 3:
+            continue
+        nome = x["galaxy"]
+        D = numero(x.get("distance_mpc", x.get("distance_Mpc")))
+        uscita.append(dict(
+            chiave=chiave_normale(nome) if survey != "WALLABY" else nome,
+            nome=(nome_bello(chiave_normale(nome)) if re.match(r"^(DDO|NGC|UGC|IC)_?\d", nome) else
+                  nome.replace("WALLABY_", "WALLABY ").replace("_", " ")),
+            fonte=SURVEY_NOMI[survey], survey=survey, tipo=-1, D=D, e_D=np.nan, inc=numero(x.get("inc_deg")),
+            e_inc=np.nan, L36=np.nan, Reff=np.nan, Rdisk=np.nan, MHI=np.nan, RHI=np.nan,
+            Vflat=float(np.median([r[1] for r in righe[-3:]])), e_Vflat=np.nan,
+            Q=1 if survey != "WALLABY" else 2, ra=numero(x.get("ra_deg")), dec=numero(x.get("dec_deg")),
+            righe=righe, senza_barioni=True))
+    return uscita
+
+
 def _m33(avvisa, rete):
     try:
         b = _file_cache("m33_kam2017_table9.tsv", url_vizier(**{"-source": "J/AJ/154/41/table9", "-out": "**",
@@ -327,11 +402,40 @@ def v_miyamoto_nagai(R, M, a, b):
     return np.sqrt(G * M * R ** 2 / (R ** 2 + (a + b) ** 2) ** 1.5)
 
 
-def barioni_via_lattea(R):
+def v2_disco_sottile(R, sigma, r_max=80.0, n_r=4000, k_max=40.0, n_k=6000):
+    """V² nel piano di un disco sottile con densità superficiale sigma(R) (Msun/kpc²), dalla soluzione con le
+    funzioni di Bessel: dΦ/dR = 2πG ∫ k J1(kR) [∫ Σ(R') J0(kR') R' dR'] dk. Con il segno: V² < 0 dove il
+    disco tira verso l'esterno (buco centrale)."""
+    from scipy.special import j0, j1
+    R = np.atleast_1d(np.asarray(R, float))
+    rp = np.linspace(1e-4, r_max, n_r)
+    k = np.linspace(1e-4, k_max, n_k)
+    S = np.trapezoid(sigma(rp)[None, :] * j0(np.outer(k, rp)) * rp[None, :], rp, axis=1)
+    dphi = 2 * math.pi * G * np.trapezoid((k * S)[None, :] * j1(np.outer(R, k)), k, axis=1)
+    return R * dphi
+
+
+def _sigma_gas(sigma0_pc2, rd, rm):
+    return lambda r: sigma0_pc2 * 1e6 * np.exp(-rm / np.maximum(r, 1e-3) - r / rd)
+
+
+def massa_gas_via_lattea():
+    r = np.linspace(1e-3, 80, 20000)
+    return float(sum(np.trapezoid(2 * math.pi * r * _sigma_gas(s0, rd, rm)(r), r) for _n, s0, rd, rm in MW_GAS))
+
+
+MW_MASSA_GAS = massa_gas_via_lattea()      # ≈ 1,2e10 Msun
+
+
+def barioni_via_lattea(R, gas=False):
+    """Velocità del disco di stelle (sottile + spesso) e del bulbo; con gas=True anche del gas (con il segno)."""
     R = np.asarray(R, float)
     vb = v_plummer(R, *MW_BULBO)
     vd = np.sqrt(sum(v_miyamoto_nagai(R, *d) ** 2 for d in MW_DISCHI))
-    return vd, vb
+    if not gas:
+        return vd, vb
+    v2g = sum(v2_disco_sottile(R, _sigma_gas(s0, rd, rm)) for _n, s0, rd, rm in MW_GAS)
+    return vd, vb, np.sign(v2g) * np.sqrt(np.abs(v2g))
 
 
 def trova_csv_salsa(preferito=None):
@@ -384,11 +488,12 @@ def via_lattea(csv_salsa=None, avvisa=print):
         e = math.hypot(0.5 * (sm + sp), SISTEMATICO_EILERS * v)
         righe.append([R, v, e, 0.0, 0.0, 0.0, 2])
     sorgenti.append("Eilers+2019 (38 points)")
+    sorgenti.append("stars: Pouliasis+2017 model I, gas: McMillan 2017")
     righe.sort()
     R = np.array([r[0] for r in righe])
-    vd, vb = barioni_via_lattea(R)
-    for r, d, b in zip(righe, vd, vb):
-        r[4], r[5] = float(d), float(b)
+    vd, vb, vg = barioni_via_lattea(R, gas=True)
+    for r, d, b, gg in zip(righe, vd, vb, vg):
+        r[3], r[4], r[5] = float(gg), float(d), float(b)
     V_edo = [x[1] for x in edoardo]
     return dict(chiave="VIA_LATTEA", nome="Via Lattea", fonte="; ".join(sorgenti), tipo=4, D=np.nan, e_D=np.nan,
                 inc=np.nan, e_inc=np.nan, L36=np.nan, Reff=np.nan, Rdisk=2.6, MHI=np.nan, RHI=np.nan,
@@ -438,7 +543,8 @@ class Catalogo:
                      "NGC5055": "M 63 – Girasole", "NGC3992": "M 109", "NGC3198": "NGC 3198 – il caso classico",
                      "DDO154": "DDO 154 – nana oscura", "UGC00128": "UGC 128 – poco luminosa",
                      "NGC6946": "NGC 6946 – Fuochi d'artificio",
-                     "UGC02885": "UGC 2885 – galassia di Rubin"}.get(k, nome)
+                     "UGC02885": "UGC 2885 – galassia di Rubin", "NGC3031": "M 81 – Galassia di Bode",
+                     "NGC4826": "M 64 – Occhio Nero", "NGC4736": "M 94", "NGC3627": "M 66"}.get(k, nome)
             return breve
         return g["nome"]
 
@@ -467,6 +573,19 @@ def carica_catalogo(avvisa=print, rete=True, csv_salsa=None):
             cat.galassie[g["chiave"]] = prepara(g)
     avvisa(f"SPARC: {len(cat.galassie)} galassie, {sum(len(g['R']) for g in cat.galassie.values())} punti "
            f"({cat.fonte_sparc})")
+    nuove, doppie = 0, 0
+    for g in _raccolta(avvisa, rete):
+        k = g["chiave"]
+        if k in cat.galassie:
+            # già in SPARC: la curva THINGS / LITTLE THINGS diventa una seconda misura da confrontare
+            a = np.array(g["righe"], float)
+            cat.galassie[k].setdefault("altre", []).append(dict(R=a[:, 0], V=a[:, 1], eV=a[:, 2], fonte=g["fonte"]))
+            doppie += 1
+        else:
+            cat.galassie[k] = prepara(g)
+            nuove += 1
+    if nuove or doppie:
+        avvisa(f"raccolta Zenodo 2026: {nuove} galassie nuove (solo curva), {doppie} curve in più per galassie SPARC")
     m33 = _m33(avvisa, rete)
     if m33:
         cat.galassie["M33"] = prepara(m33)
@@ -523,44 +642,99 @@ def g_mond(gbar):
     return gb / (-np.expm1(-np.sqrt(gb / A0_INT)))
 
 
+def massa_einasto(r, rs, rho_kpc3, alfa):
+    """Massa entro r per ρ(r) = ρs exp{−2/α [(r/rs)^α − 1]} (rs = r₋₂, ρs = ρ(rs), come Li+2020)."""
+    from scipy.special import gamma, gammainc
+    a = 3.0 / alfa
+    z = (2.0 / alfa) * (np.asarray(r, float) / rs) ** alfa
+    return 4 * math.pi * rho_kpc3 * rs ** 3 * math.exp(2.0 / alfa) / alfa * (alfa / 2.0) ** a * gamma(a) * gammainc(a, z)
+
+
+def v2_einasto(r, rs, logrho_pc3, alfa):
+    r = np.maximum(r, 1e-6)
+    return G * massa_einasto(r, rs, 10 ** logrho_pc3 * 1e9, alfa) / r
+
+
+def v2_alone(r, modello, p):
+    if modello == "NFW":
+        return v2_nfw(r, p["V200"], p["c"])
+    if modello == "Burkert":
+        return v2_burkert(r, p["r0"], p["logrho"])
+    if modello == "pISO":
+        return v2_piso(r, p["r0"], p["logrho"])
+    if modello == "Einasto":
+        return v2_einasto(r, p["r0"], p["logrho"], p["alfa"])
+    return np.zeros_like(np.asarray(r, float))
+
+
 def v_modello(g, modello, p):
-    """p: dict con Yd e i parametri dell'alone. Restituisce (V totale, V² alone)."""
-    vb2 = v2_barioni(g, p["Yd"])
-    r = g["R"]
+    """p: dict con Yd, i parametri dell'alone e (facoltativi) D_fit, i_fit. Restituisce (V del modello
+    riportata alla distanza e all'inclinazione pubblicate, V² dell'alone).
+    Con distanza D' = δ·D: raggi × δ, V² delle componenti visibili × δ (massa ∝ D², raggio ∝ D);
+    con inclinazione i': la velocità vera è V_pubblicata · sin i / sin i' (come Li+2020)."""
+    delta = p.get("D_fit", g.get("D")) / g["D"] if p.get("D_fit") else 1.0
+    fattore_i = 1.0
+    if p.get("i_fit"):
+        fattore_i = math.sin(math.radians(p["i_fit"])) / math.sin(math.radians(g["inc"]))
+    r = g["R"] * delta
+    vb2 = v2_barioni(g, p["Yd"]) * delta
     if modello == "MOND":
         gb = np.maximum(vb2, 0) / np.maximum(r, 1e-6)
         v2 = r * g_mond(gb) * (vb2 > 0)
-        return np.sqrt(np.maximum(v2, 0)), v2 - vb2
-    if modello == "NFW":
-        vh2 = v2_nfw(r, p["V200"], p["c"])
-    elif modello == "Burkert":
-        vh2 = v2_burkert(r, p["r0"], p["logrho"])
+        vh2 = v2 - vb2
     else:
-        vh2 = v2_piso(r, p["r0"], p["logrho"])
-    return np.sqrt(np.maximum(vb2 + vh2, 0)), vh2
+        vh2 = v2_alone(r, modello, p)
+        v2 = vb2 + vh2
+    return np.sqrt(np.maximum(v2, 0)) * fattore_i, vh2
+
+
+def alone_pubblicato(g, modello, p):
+    """V dell'alone da solo ai raggi pubblicati (con la distanza e l'inclinazione dell'adattamento)."""
+    delta = p["D_fit"] / g["D"] if p.get("D_fit") else 1.0
+    fi = math.sin(math.radians(p["i_fit"])) / math.sin(math.radians(g["inc"])) if p.get("i_fit") else 1.0
+    return v_alone_su(g["R"] * delta, modello, p) * fi
 
 
 def v_alone_su(r, modello, p):
     r = np.asarray(r, float)
-    if modello == "NFW":
-        return np.sqrt(v2_nfw(r, p["V200"], p["c"]))
-    if modello == "Burkert":
-        return np.sqrt(v2_burkert(r, p["r0"], p["logrho"]))
-    if modello == "pISO":
-        return np.sqrt(v2_piso(r, p["r0"], p["logrho"]))
-    return np.zeros_like(r)
+    if modello == "MOND":
+        return np.zeros_like(r)
+    return np.sqrt(np.maximum(v2_alone(r, modello, p), 0))
 
 
 # ------------------------------------------------------------------- adattamento
+PARAMETRI_ALONE = {"NFW": ("V200", "c"), "Burkert": ("r0", "logrho"), "pISO": ("r0", "logrho"),
+                   "Einasto": ("r0", "logrho", "alfa"), "MOND": ()}
+NOMI_LI = {"NFW": "NFW-Flat", "Burkert": "Burkert-Flat", "pISO": "pISO-Flat", "Einasto": "Einasto-Flat"}
+
+
 def _nomi_parametri(modello):
-    return {"NFW": ("V200", "c"), "Burkert": ("r0", "logrho"), "pISO": ("r0", "logrho"), "MOND": ()}[modello]
+    return PARAMETRI_ALONE[modello]
 
 
-def adatta(g, modello, ml="libero", Yd_fisso=ML_DISCO, inizi=None):
+def parametri_li(q, modello):
+    """Parametri di una riga di Li+2020 nello stesso formato di p."""
+    p = dict(Yd=q["Ydisk"])
+    if modello == "NFW":
+        p.update(V200=q["V200"], c=q["C200"])
+    else:
+        p.update(r0=q["rs"], logrho=q["log(rhos)"])
+        if modello == "Einasto":
+            p["alfa"] = q["alpha"]
+    return p
+
+
+def puo_liberare_Di(g):
+    return (g["fonte"].startswith("SPARC") and np.isfinite(g.get("e_D", np.nan)) and g.get("e_D", 0) > 0
+            and np.isfinite(g.get("e_inc", np.nan)) and g.get("e_inc", 0) > 0 and 0 < g.get("inc", 0) <= 90)
+
+
+def adatta(g, modello, ml="libero", Yd_fisso=ML_DISCO, inizi=None, libere_Di=False):
     """Adatta un modello alla curva della galassia g.
     ml = "libero": Υ_disco libero con priore log-normale (0,5 ± 0,1 dex, come Li+2020); Υ_bulbo = 1,4 Υ_disco.
-    ml = "fisso": Υ_disco = Yd_fisso. Per la Via Lattea (masse già in Msun) Υ = 1 fisso; per M 33 nessun
-    barione (tutta la massa nell'alone)."""
+    ml = "fisso": Υ_disco = Yd_fisso. Per la Via Lattea (masse già in Msun) Υ = 1 fisso; per le galassie
+    senza componenti visibili (M 33, THINGS/LITTLE THINGS/WALLABY non SPARC) tutta la massa va nell'alone.
+    libere_Di: distanza e inclinazione libere con priori gaussiani sugli errori pubblicati (solo SPARC)."""
     from scipy.optimize import least_squares
     R, V, eV = g["R"], g["V"], g["eV"]
     if g.get("senza_barioni"):
@@ -571,8 +745,26 @@ def adatta(g, modello, ml="libero", Yd_fisso=ML_DISCO, inizi=None):
     if g.get("massa_fissa"):
         ml, Yd_fisso = "fisso", 1.0
     libero = ml == "libero"
+    libere_Di = bool(libere_Di) and puo_liberare_Di(g)
     rif = ML_DISCO
     nomi = _nomi_parametri(modello)
+    basso, alto = [], []
+    if libero:
+        basso.append(math.log10(0.05))
+        alto.append(math.log10(5.0))
+    if modello == "NFW":
+        basso += [1.0, 0.0]
+        alto += [math.log10(500), 2.0]
+    elif modello in ("Burkert", "pISO"):
+        basso += [math.log10(0.05), -5.0]
+        alto += [math.log10(300), 2.0]
+    elif modello == "Einasto":
+        basso += [math.log10(0.05), -6.0, 0.05]
+        alto += [math.log10(300), 2.0, 1.5]
+    if libere_Di:
+        D, eD, i0, ei = g["D"], g["e_D"], g["inc"], g["e_inc"]
+        basso += [max(0.2 * D, D - 5 * eD), max(10.0, i0 - 5 * ei)]
+        alto += [D + 5 * eD, min(90.0, i0 + 5 * ei)]
 
     def da_vettore(x):
         p = {}
@@ -584,42 +776,47 @@ def adatta(g, modello, ml="libero", Yd_fisso=ML_DISCO, inizi=None):
             p["Yd"] = Yd_fisso
         if modello == "NFW":
             p["V200"], p["c"] = 10 ** x[i], 10 ** x[i + 1]
+            i += 2
         elif modello in ("Burkert", "pISO"):
             p["r0"], p["logrho"] = 10 ** x[i], x[i + 1]
+            i += 2
+        elif modello == "Einasto":
+            p["r0"], p["logrho"], p["alfa"] = 10 ** x[i], x[i + 1], x[i + 2]
+            i += 3
+        if libere_Di:
+            p["D_fit"], p["i_fit"] = float(x[i]), float(x[i + 1])
         return p
 
     def residui(x):
         p = da_vettore(x)
         vm, _ = v_modello(g, modello, p)
         r = (vm - V) / eV
+        extra = []
         if libero:
-            r = np.append(r, (x[0] - math.log10(rif)) / PRIORE_DEX)
-        return r
+            extra.append((x[0] - math.log10(rif)) / PRIORE_DEX)
+        if libere_Di:
+            extra += [(p["D_fit"] - g["D"]) / g["e_D"], (p["i_fit"] - g["inc"]) / g["e_inc"]]
+        return np.append(r, extra) if extra else r
 
-    basso, alto = [], []
-    if libero:
-        basso.append(math.log10(0.05))
-        alto.append(math.log10(5.0))
-    if modello == "NFW":
-        basso += [1.0, 0.0]
-        alto += [math.log10(500), 2.0]
-    elif modello in ("Burkert", "pISO"):
-        basso += [math.log10(0.05), -5.0]
-        alto += [math.log10(300), 2.0]
     if inizi is None:
         Rm = max(g["Rmax"], 1.0)
         Vm = max(float(np.nanmax(V)), 10.0)
+        rho = Vm ** 2 / (G * Rm ** 2) / 1e9
         if modello == "NFW":
             inizi = [(math.log10(Vm * f), math.log10(c)) for f in (0.7, 1.0, 1.5) for c in (3, 8, 20)]
         elif modello in ("Burkert", "pISO"):
             # densità che dà circa Vmax a Rmax
-            rho = Vm ** 2 / (G * Rm ** 2) / 1e9
             inizi = [(math.log10(Rm * f), math.log10(rho * k)) for f in (0.1, 0.3, 1.0) for k in (1, 10, 100)]
+        elif modello == "Einasto":
+            inizi = [(math.log10(Rm * f), math.log10(rho * k), a) for f in (0.3, 1.0) for k in (1, 10, 100)
+                     for a in (0.17, 0.5)]
         else:
             inizi = [()]
     migliore = None
     for x0 in inizi:
         x0 = ([math.log10(rif)] if libero else []) + list(x0)
+        if libere_Di:
+            x0 += [g["D"], g["inc"]]
         x0 = np.clip(x0, np.array(basso) + 1e-6, np.array(alto) - 1e-6) if basso else np.array(x0)
         try:
             if len(x0) == 0:
@@ -628,7 +825,7 @@ def adatta(g, modello, ml="libero", Yd_fisso=ML_DISCO, inizi=None):
                 costo = 0.5 * float(np.sum(res ** 2))
                 x = np.array([])
             else:
-                fit = least_squares(residui, x0, bounds=(basso, alto), method="trf", x_scale="jac", max_nfev=2000)
+                fit = least_squares(residui, x0, bounds=(basso, alto), method="trf", x_scale="jac", max_nfev=3000)
                 x, costo = fit.x, fit.cost
         except Exception:
             continue
@@ -654,27 +851,36 @@ def adatta(g, modello, ml="libero", Yd_fisso=ML_DISCO, inizi=None):
             if libero:
                 err["Yd"] = p["Yd"] * math.log(10) * s[0]
                 i = 1
-            for nome, si in zip(nomi, s[i:]):
-                err[nome] = (p[nome] * math.log(10) * si) if nome != "logrho" else si
+            for nome in nomi:
+                si = s[i]
+                err[nome] = si if nome in ("logrho", "alfa") else p[nome] * math.log(10) * si
+                i += 1
+            if libere_Di:
+                err["D_fit"], err["i_fit"] = s[i], s[i + 1]
         except Exception:
             pass
-    vb2 = v2_barioni(g, p["Yd"])
+    delta = p["D_fit"] / g["D"] if libere_Di else 1.0
+    vb2 = v2_barioni(g, p["Yd"]) * delta
+    vtot2 = vb2 + vh2 if modello != "MOND" else vb2 + vh2
     ris = dict(modello=modello, ok=True, p=p, err=err, chi2=chi2, chi2_rid=chi2 / gradi, n=len(R), k=k,
                ml=ml if not g.get("massa_fissa") else "fisso (masse del modello)", V=vm, res=res,
-               fdm_ultimo=float(1 - max(vb2[-1], 0) / max(vm[-1] ** 2, 1e-9)))
+               libere_Di=libere_Di,
+               fdm_ultimo=float(1 - max(vb2[-1], 0) / max(vtot2[-1], 1e-9)))
+    Rf = R[-1] * delta
     if modello == "NFW":
         ris["M200"] = p["V200"] ** 3 / (10 * G * H0)
         ris["r200"] = p["V200"] / (10 * H0)
         ris["rs"] = ris["r200"] / p["c"]
-    elif modello in ("Burkert", "pISO"):
-        ris["Malone_Rmax"] = float(max(vh2[-1], 0) * R[-1] / G)
-    ris["Mvis_Rmax"] = float(max(vb2[-1], 0) * R[-1] / G)
-    ris["Mtot_Rmax"] = float(vm[-1] ** 2 * R[-1] / G)
+    elif modello in ("Burkert", "pISO", "Einasto"):
+        ris["Malone_Rmax"] = float(max(vh2[-1], 0) * Rf / G)
+    ris["Mvis_Rmax"] = float(max(vb2[-1], 0) * Rf / G)
+    ris["Mtot_Rmax"] = float(max(vtot2[-1], 0) * Rf / G)
     return ris
 
 
-def adatta_tutti(g, ml="libero", Yd_fisso=ML_DISCO, modelli=MODELLI):
-    return {m: adatta(g, m, ml, Yd_fisso) for m in modelli}
+def adatta_tutti(g, ml="libero", Yd_fisso=ML_DISCO, modelli=None, libere_Di=False):
+    modelli = MODELLI if modelli is None else modelli
+    return {m: adatta(g, m, ml, Yd_fisso, libere_Di=libere_Di) for m in modelli}
 
 
 def frazione_oscura(g, Yd=ML_DISCO):
@@ -870,7 +1076,10 @@ def disegna_curva(fig, g, risultati, modelli=("NFW", "Burkert"), componenti=("ga
                             capsize=2, label=et, zorder=5)
     else:
         ax.errorbar(R, V, eV, fmt="o", ms=4, color=COLORI["oss"], ecolor="#9ca3af", elinewidth=1, capsize=2,
-                    label="observed", zorder=5)
+                    label="observed" + (f" ({g['fonte'].split(' (')[0]})" if g.get("altre") else ""), zorder=5)
+    for alt in g.get("altre", []) if "altre" in componenti else []:
+        ax.errorbar(alt["R"], alt["V"], alt["eV"], fmt="^", ms=4, color="#0ea5e9", ecolor="#7dd3fc", elinewidth=0.8,
+                    alpha=0.8, label=f"also measured by {alt['fonte']}", zorder=4)
     rr = R
     ris_ref = None
     for m in modelli:
@@ -903,17 +1112,15 @@ def disegna_curva(fig, g, risultati, modelli=("NFW", "Burkert"), componenti=("ga
             et += f", Υ = {r['p']['Yd']:.2f}"
         ax.plot(rr, r["V"], "-", color=COLORI[m], lw=2.2, label=et, zorder=6)
         if m != "MOND" and "alone" in componenti:
-            ax.plot(rr, v_alone_su(rr, m, r["p"]), "-", color=COLORI[m], lw=1, alpha=0.6)
+            ax.plot(rr, alone_pubblicato(g, m, r["p"]), "-", color=COLORI[m], lw=1, alpha=0.6)
     if li:
         for m in modelli:
-            nome = {"NFW": "NFW-Flat", "Burkert": "Burkert-Flat", "pISO": "pISO-Flat"}.get(m)
+            nome = NOMI_LI.get(m)
             q = li.get(nome) if nome else None
             if q:
-                p = dict(Yd=q["Ydisk"])
-                if m == "NFW":
-                    p.update(V200=q["V200"], c=q["C200"])
-                else:
-                    p.update(r0=q["rs"], logrho=q["log(rhos)"])
+                p = parametri_li(q, m)
+                if puo_liberare_Di(g) and np.isfinite(q.get("Dist", np.nan)) and np.isfinite(q.get("inc", np.nan)):
+                    p.update(D_fit=q["Dist"], i_fit=q["inc"])        # Li+2020 hanno adattato anche D e i
                 vli, _ = v_modello(g, m, p)
                 ax.plot(rr, vli, ls=(0, (1, 1.5)), color=COLORI[m], lw=1.6, alpha=0.9,
                         label=f"{m} Li et al. 2020 (Υ = {q['Ydisk']:.2f}, χ²ᵣ = {q['chi2']:.2f})")
@@ -995,8 +1202,7 @@ def disegna_insieme(fig, cat, evidenzia=None, tutte=None):
             if s.any():
                 ax.plot(np.log10(gb[s]), np.log10(go[s]), "o", ms=4, color="#dc2626", label=_titolo(cat.galassie[evidenzia]))
     if vl:
-        vd, vb = barioni_via_lattea(vl["R"])
-        gbar = (vd ** 2 + vb ** 2) / vl["R"] * KMS2_KPC_IN_MS2
+        gbar = np.maximum(v2_barioni(vl, 1.0), 1e-9) / vl["R"] * KMS2_KPC_IN_MS2      # stelle + gas
         gobs = vl["V"] ** 2 / vl["R"] * KMS2_KPC_IN_MS2
         o = np.asarray(vl.get("origine", np.full(len(vl["R"]), 2)))
         ax.plot(np.log10(gbar[o == 2]), np.log10(gobs[o == 2]), "s", ms=3, color=COLORI["eilers"], label="Milky Way (Eilers+2019)")
@@ -1021,8 +1227,7 @@ def disegna_insieme(fig, cat, evidenzia=None, tutte=None):
     vf, fd, q = np.array(vf), np.array(fd), np.array(q)
     sc = ax.scatter(vf, fd, c=q, cmap="Blues_r", vmin=0.5, vmax=3.5, s=14)
     if vl:
-        vd, vb = barioni_via_lattea([vl["R"][-1]])
-        ax.scatter([vl["Vflat"]], [1 - (vd[0] ** 2 + vb[0] ** 2) / vl["V"][-1] ** 2], marker="*", s=260,
+        ax.scatter([vl["Vflat"]], [frazione_oscura(vl, 1.0)[-1]], marker="*", s=260,
                    color=COLORI["edoardo"], edgecolor="k", zorder=6, label="Milky Way (at 25 kpc)")
     if evidenzia and evidenzia in cat.galassie:
         g = cat.galassie[evidenzia]
@@ -1090,11 +1295,19 @@ def testo_parametri(r):
     def pm(k, fmt):
         return f"{p[k]:{fmt}}" + (f" ± {e[k]:{fmt}}" if k in e and np.isfinite(e[k]) else "")
     if r["modello"] == "NFW":
-        return f"V200 = {pm('V200', '.1f')} km/s, c = {pm('c', '.1f')}, rs = {r['rs']:.1f} kpc, M200 = {r['M200']:.2e} Msun"
+        return (f"V200 = {pm('V200', '.1f')} km/s, c = {pm('c', '.1f')}, rs = {r['rs']:.1f} kpc, "
+                f"M200 = {r['M200']:.2e} Msun" + (f", D = {pm('D_fit', '.2f')} Mpc, i = {pm('i_fit', '.1f')}°"
+                                                   if r.get("libere_Di") else ""))
+    extra = ""
+    if r.get("libere_Di"):
+        extra = f", D = {pm('D_fit', '.2f')} Mpc, i = {pm('i_fit', '.1f')}°"
     if r["modello"] in ("Burkert", "pISO"):
         return (f"r0 = {pm('r0', '.2f')} kpc, log ρ0 = {pm('logrho', '.2f')} (Msun/pc³), "
-                f"halo mass inside Rmax = {r['Malone_Rmax']:.2e} Msun")
-    return "a0 = 1.2e-10 m/s² (fixed), no dark matter"
+                f"halo mass inside Rmax = {r['Malone_Rmax']:.2e} Msun" + extra)
+    if r["modello"] == "Einasto":
+        return (f"rs = {pm('r0', '.2f')} kpc, log ρs = {pm('logrho', '.2f')} (Msun/pc³), α = {pm('alfa', '.2f')}, "
+                f"halo mass inside Rmax = {r['Malone_Rmax']:.2e} Msun" + extra)
+    return "a0 = 1.2e-10 m/s² (fixed), no dark matter" + extra
 
 
 def testo_risultati(g, ris, li=None, lingua="en"):
@@ -1126,12 +1339,14 @@ def testo_risultati(g, ris, li=None, lingua="en"):
             f" ± {r['err']['Yd']:.2f}" if "Yd" in r.get("err", {}) else "") + ", "
         righe.append(f"{m:8s} χ²_red = {r['chi2_rid']:6.2f}   {ml}{testo_parametri(r)}")
         if li:
-            nome = {"NFW": "NFW-Flat", "Burkert": "Burkert-Flat", "pISO": "pISO-Flat"}.get(m)
+            nome = NOMI_LI.get(m)
             q = li.get(nome) if nome else None
             if q:
                 righe.append(f"{'':8s} Li+2020: χ²_red = {q['chi2']:6.2f}   Υ_disc = {q['Ydisk']:.2f}"
                              + (f", V200 = {q['V200']:.1f}, c = {q['C200']:.1f}" if m == "NFW" else
-                                f", r0 = {q['rs']:.2f} kpc, log ρ0 = {q['log(rhos)']:.2f}"))
+                                f", r0 = {q['rs']:.2f} kpc, log ρ0 = {q['log(rhos)']:.2f}"
+                                + (f", α = {q['alpha']:.2f}" if m == "Einasto" else ""))
+                             + f", D = {q['Dist']:.2f} Mpc, i = {q['inc']:.1f}°")
     ok = [r for r in ris.values() if r.get("ok")]
     if ok:
         best = min(ok, key=lambda r: r["chi2_rid"])
@@ -1155,23 +1370,31 @@ NOTE_IT = [
      "dell'idrogeno, come SALSA, e riga Hα) e la luce delle stelle misurata da Spitzer a 3,6 µm. Per ogni raggio "
      "ci sono la velocità del gas, del disco e del bulbo. Il disco e il bulbo sono dati per Υ = 1 (una massa "
      "solare per ogni luminosità solare): il rapporto massa/luce vero a 3,6 µm è circa 0,5, ed è il numero "
-     "che si regola con il contatore."),
+     "che si regola con il contatore. Dalla versione 1.1 ci sono anche le curve della raccolta di Flynn (2026, Zenodo): "
+     "THINGS (de Blok et al. 2008), LITTLE THINGS (Oh et al. 2015, galassie nane) e WALLABY (Deg et al. 2022, 203 "
+     "galassie del cielo australe, misure automatiche meno precise sotto i 50 km/s). Per queste c'è solo la curva "
+     "misurata: senza la materia visibile tutta la massa viene data all'alone. Quando una galassia SPARC è anche in "
+     "THINGS, la seconda curva compare con triangoli azzurri."),
     ("I modelli di materia oscura",
      "NFW: il profilo che esce dalle simulazioni al computer dell'universo (Navarro, Frenk e White 1996), con "
      "una densità che cresce senza limite verso il centro («cuspide»). Burkert e isotermo (pISO): aloni con un "
      "«nucleo» di densità costante al centro. Molte galassie nane preferiscono un nucleo: è il problema "
-     "«cuspide o nucleo». MOND (Milgrom 1983) non usa materia oscura: cambia la gravità quando l'accelerazione "
+     "«cuspide o nucleo». Einasto: il profilo che descrive meglio gli aloni delle simulazioni più recenti, con una "
+     "pendenza che cambia piano piano (il parametro α). MOND (Milgrom 1983) non usa materia oscura: cambia la gravità quando l'accelerazione "
      "è più piccola di a0 = 1,2·10⁻¹⁰ m/s²."),
     ("Come leggere χ²",
      "χ² ridotto (χ²ᵣ) misura quanto il modello passa vicino ai punti, tenendo conto degli errori: circa 1 = "
      "buono; molto più di 1 = il modello non segue la curva. Sotto il grafico ci sono i residui (misura − modello). "
      "La linea a puntini «Li et al. 2020» è l'adattamento pubblicato da specialisti (che regolano anche distanza "
-     "e inclinazione): serve per controllare i nostri risultati."),
+     "e inclinazione): serve per controllare i nostri risultati. Con «Distanza e inclinazione: libere» il programma "
+     "fa lo stesso, entro gli errori pubblicati: una galassia un po' più lontana ha stelle e gas più massicci, una "
+     "più inclinata ruota un po' più piano. Così i χ² diventano confrontabili con quelli di Li et al. 2020."),
     ("La Via Lattea",
      "I punti arancioni sono la misura di Edoardo con SALSA (metodo del punto tangente, R₀ = 8,5 kpc, tra 3,6 e "
      "8,5 kpc). I punti verdi sono Eilers et al. 2019 (stelle giganti rosse con Gaia e APOGEE, da 5 a 25 kpc, "
      "R₀ = 8,12 kpc). Le stelle della Via Lattea vengono dal modello I di Pouliasis et al. 2017 (bulbo + disco "
-     "sottile + disco spesso), lo stesso usato da Eilers: qui le masse sono già in masse solari, quindi niente "
+     "sottile + disco spesso), lo stesso usato da Eilers; dalla 1.1 c'è anche il gas (idrogeno atomico e molecolare, "
+     "McMillan 2017, circa 12 miliardi di masse solari). Qui le masse sono già in masse solari, quindi niente "
      "rapporto massa/luce."),
     ("I grafici d'insieme",
      "Tully-Fisher barionica: la massa visibile cresce come la velocità alla quarta potenza circa, con pochissima "
@@ -1225,7 +1448,7 @@ def salva_scheda(g, ris, li, imgs, cartella, modelli=("NFW", "Burkert", "MOND"))
     return [Path(str(base) + ".pdf"), Path(str(base) + ".png")]
 
 
-def adatta_catalogo(cat, ml="libero", avvisa=print, fermo=None, modelli=MODELLI):
+def adatta_catalogo(cat, ml="libero", avvisa=print, fermo=None, modelli=None, libere_Di=False):
     """Adatta tutti i modelli a tutte le galassie. Restituisce {chiave: {modello: risultato}}."""
     tutti = {}
     chiavi = cat.chiavi_ordinate()
@@ -1234,7 +1457,7 @@ def adatta_catalogo(cat, ml="libero", avvisa=print, fermo=None, modelli=MODELLI)
         if fermo is not None and fermo.is_set():
             break
         g = cat.galassie[k]
-        tutti[k] = adatta_tutti(g, ml, modelli=modelli)
+        tutti[k] = adatta_tutti(g, ml, modelli=modelli, libere_Di=libere_Di)
         if i % 10 == 0:
             avvisa(f"adattamenti: {i + 1}/{len(chiavi)} galassie ({time.time() - t0:.0f} s)")
     avvisa(f"adattamenti finiti: {len(tutti)} galassie in {time.time() - t0:.0f} s")
@@ -1252,8 +1475,8 @@ def salva_csv_tutte(cat, tutti, cartella):
         w = csv.writer(fh)
         w.writerow(["galaxy", "source", "quality", "distance_Mpc", "inclination_deg", "Vflat_kms", "n_points",
                     "Rmax_kpc", "model", "ml_mode", "Ydisk", "e_Ydisk", "V200_kms", "c200", "rs_kpc", "log_M200",
-                    "r0_kpc", "log_rho0_Msun_pc3", "chi2_red", "dm_fraction_last_radius", "best_model",
-                    "Li2020_Ydisk", "Li2020_chi2_red"])
+                    "r0_kpc", "log_rho0_Msun_pc3", "einasto_alpha", "distance_fit_Mpc", "inclination_fit_deg",
+                    "chi2_red", "dm_fraction_last_radius", "best_model", "Li2020_Ydisk", "Li2020_chi2_red"])
         for k, ris in tutti.items():
             g = cat.galassie[k]
             b = migliore(ris)
@@ -1261,7 +1484,7 @@ def salva_csv_tutte(cat, tutti, cartella):
                 if not r.get("ok"):
                     continue
                 p_ = r["p"]
-                li = cat.li.get(k, {}).get({"NFW": "NFW-Flat", "Burkert": "Burkert-Flat", "pISO": "pISO-Flat"}.get(m, ""), {})
+                li = cat.li.get(k, {}).get(NOMI_LI.get(m, ""), {})
                 w.writerow([_titolo(g), g["fonte"], g["Q"], g["D"], g["inc"], g["Vflat"], r["n"], f"{g['Rmax']:.2f}",
                             m, r["ml"], f"{p_['Yd']:.3f}", f"{r['err'].get('Yd', float('nan')):.3f}",
                             f"{p_.get('V200', float('nan')):.2f}", f"{p_.get('c', float('nan')):.2f}",
@@ -1269,6 +1492,8 @@ def salva_csv_tutte(cat, tutti, cartella):
                             f"{math.log10(r['M200']):.3f}" if "M200" in r else "",
                             f"{p_.get('r0', float('nan')):.3f}" if m != "NFW" else "",
                             f"{p_.get('logrho', float('nan')):.3f}" if m != "NFW" else "",
+                            f"{p_['alfa']:.3f}" if "alfa" in p_ else "",
+                            f"{p_['D_fit']:.3f}" if "D_fit" in p_ else "", f"{p_['i_fit']:.2f}" if "i_fit" in p_ else "",
                             f"{r['chi2_rid']:.3f}", f"{r['fdm_ultimo']:.3f}", b["modello"] if b else "",
                             li.get("Ydisk", ""), li.get("chi2", "")])
     return p
@@ -1425,6 +1650,21 @@ def autotest_motore(stampa=print, cat=None):
     vd, vb = barioni_via_lattea([R_SOLE_EILERS])
     vs = math.hypot(vd[0], vb[0])
     prova("Via Lattea: stelle del modello I al Sole", 170 < vs < 200, f"{vs:.1f} km/s")
+    # 5b. Einasto: massa contro integrale della densità
+    rs, rhos, alfa = 5.0, 3e6, 0.3
+    m_num = quad(lambda r: 4 * math.pi * r ** 2 * rhos * math.exp(-2 / alfa * ((r / rs) ** alfa - 1)), 0, 20)[0]
+    prova("massa di Einasto (formula contro integrale)", abs(massa_einasto(20.0, rs, rhos, alfa) / m_num - 1) < 1e-6)
+    # 5c. disco sottile numerico contro la formula esatta di Freeman (disco esponenziale)
+    from scipy.special import i0, i1, k0, k1
+    Md, Rd = 4e10, 3.0
+    Rt = np.array([1.0, 3.0, 8.0, 20.0])
+    y = Rt / (2 * Rd)
+    esatta = 2 * G * Md / Rd * y ** 2 * (i0(y) * k0(y) - i1(y) * k1(y))
+    num = v2_disco_sottile(Rt, lambda r: Md / (2 * math.pi * Rd ** 2) * np.exp(-r / Rd))
+    prova("disco sottile numerico contro Freeman", float(np.max(np.abs(num / esatta - 1))) < 1e-3,
+          f"scarto massimo {np.max(np.abs(num / esatta - 1)):.1e}")
+    prova("gas della Via Lattea (McMillan 2017) tra 0,8 e 1,6e10 Msun", 0.8e10 < MW_MASSA_GAS < 1.6e10,
+          f"{MW_MASSA_GAS:.2e} Msun")
     # 6. galassia simulata: l'adattamento NFW ritrova i parametri
     gf = galassia_finta()
     r = adatta(gf, "NFW", "libero")
@@ -1449,6 +1689,19 @@ def autotest_motore(stampa=print, cat=None):
             prova("NGC 3198 NFW: Υ tra 0,3 e 0,7 e χ²ᵣ < 3", n["ok"] and 0.3 < n["p"]["Yd"] < 0.7 and n["chi2_rid"] < 3,
                   f"Υ {n['p']['Yd']:.2f} (Li 0,47), V200 {n['p']['V200']:.0f} (Li 110), c {n['p']['c']:.1f} (Li 10,4), "
                   f"χ²ᵣ {n['chi2_rid']:.2f} (Li 1,46)")
+            e = ris["Einasto"]
+            prova("NGC 3198 Einasto come Li+2020 (rs 13,6 kpc, α 0,36)", e["ok"] and abs(e["p"]["r0"] / 13.59 - 1) < 0.2
+                  and abs(e["p"]["alfa"] - 0.36) < 0.08, f"rs {e['p']['r0']:.2f}, α {e['p']['alfa']:.2f}, χ²ᵣ {e['chi2_rid']:.2f}")
+            bl = adatta(g, "Burkert", "libero", libere_Di=True)
+            prova("NGC 3198 Burkert con D e i libere come Li+2020 (D 14,69, i 73,8, Υ 0,66)",
+                  bl["ok"] and abs(bl["p"]["D_fit"] - 14.69) < 0.8 and abs(bl["p"]["i_fit"] - 73.8) < 2
+                  and abs(bl["p"]["Yd"] - 0.66) < 0.08,
+                  f"D {bl['p']['D_fit']:.2f} Mpc, i {bl['p']['i_fit']:.1f}°, Υ {bl['p']['Yd']:.2f}, χ²ᵣ {bl['chi2_rid']:.2f}")
+            if g.get("altre"):
+                prova("NGC 3198: seconda curva da THINGS", True, g["altre"][0]["fonte"])
+        nr = sum(1 for x in cat.galassie.values() if x.get("survey"))
+        if nr:
+            prova("raccolta Zenodo: più di 200 galassie nuove", nr > 200, f"{nr} (THINGS, LITTLE THINGS, WALLABY)")
         g = cat.galassie.get("DDO154")
         if g is not None:
             fd = frazione_oscura(g)[-1]

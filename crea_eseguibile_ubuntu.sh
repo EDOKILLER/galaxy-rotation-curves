@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Curve di rotazione 1.0 – crea l'eseguibile per Ubuntu, lo prova e lo installa (menu + Scrivania)
+# Curve di rotazione 1.1 – crea l'eseguibile per Ubuntu, lo prova e lo installa (menu + Scrivania)
 # © 2026 Edoardo Battistel
 #
-# Uso:  cd ~/Claude/Astropy/programma_curve_rotazione/versione_1.0
+# Uso:  cd ~/Claude/Astropy/programma_curve_rotazione/versione_1.1
 #       bash crea_eseguibile_ubuntu.sh 2>&1 | tee ~/Claude/Astropy/curve_rotazione_compila.txt
 # Usa il venv ~/Claude/Astropy/venv_compila (PyInstaller), che vede numpy, scipy,
 # matplotlib e Pillow di sistema. Astropy non serve.

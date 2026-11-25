@@ -2,28 +2,30 @@
 
 # Galaxy Rotation Curves
 
-*How much mass is missing? Rotation curves of 177 galaxies and of the Milky Way, with visible matter, dark-matter haloes and MOND* — original Italian name: «Curve di rotazione»
+*How much mass is missing? Rotation curves of 409 galaxies and of the Milky Way, with visible matter, dark-matter haloes and MOND* — original Italian name: «Curve di rotazione»
 
 Stars and gas in a disc galaxy orbit its centre; the rotation curve tells how fast they move at each radius. If almost all the mass were in the stars and gas we see, far from the centre the speed should drop like the planets around the Sun. Instead it stays flat. This program puts the measured curve next to the curve that visible matter alone would give, and shows **how much mass is missing**.
 
-It contains the 175 galaxies of **SPARC** (Lelli, McGaugh & Schombert 2016: rotation curves from HI and Hα, and gas, disc and bulge components from Spitzer 3.6 µm photometry), **M 33** (Kam et al. 2017) and the **Milky Way**, built from the author's own 21-cm measurements with the SALSA radio telescopes (see [Hydrogen 21 cm](https://github.com/EDOKILLER/hydrogen-21cm)) plus Eilers et al. 2019, with the stellar model of Pouliasis et al. 2017.
+It contains the 175 galaxies of **SPARC** (Lelli, McGaugh & Schombert 2016: rotation curves from HI and Hα, and gas, disc and bulge components from Spitzer 3.6 µm photometry); since version 1.1 also 232 galaxies from the 2026 rotation-curve corpus by Flynn (THINGS, LITTLE THINGS and WALLABY DR2: observed curves only, so the whole mass is given to the halo), **M 33** (Kam et al. 2017) and the **Milky Way**, built from the author's own 21-cm measurements with the SALSA radio telescopes (see [Hydrogen 21 cm](https://github.com/EDOKILLER/hydrogen-21cm)) plus Eilers et al. 2019, with the stellar model of Pouliasis et al. 2017 and the gas discs of McMillan 2017.
 
 ## Features
 
-* Four mass models fitted to every galaxy: **NFW** (cuspy halo from cosmological simulations), **Burkert** and **pseudo-isothermal** (cored haloes) and **MOND** (no dark matter); disc mass-to-light ratio free (log-normal prior 0.5 ± 0.1 dex, as Li et al. 2020) or fixed
+* Five mass models fitted to every galaxy: **NFW** (cuspy halo from cosmological simulations), **Burkert** and **pseudo-isothermal** (cored haloes), **Einasto** (rolling slope, as in modern simulations) and **MOND** (no dark matter); disc mass-to-light ratio free (log-normal prior 0.5 ± 0.1 dex, as Li et al. 2020) or fixed
+* Distance and inclination free within their published errors (Gaussian priors, as Li et al. 2020) or fixed
+* SPARC galaxies also observed by THINGS or LITTLE THINGS show the second curve for comparison
 * Comparison with the published fits of Li et al. 2020 for each galaxy and model
 * Overview plots: baryonic Tully-Fisher relation, radial acceleration relation (McGaugh et al. 2016), dark-matter fraction; the Milky Way marked in all of them
 * Optical (Legacy Survey DR10, DSS2 outside its footprint) and infrared (unWISE) images with the last measured radius and a kpc scale bar
-* *All galaxies*: the four models on 177 galaxies in under a minute, table, CSV and summary PDF
+* *All galaxies*: the five models on 409 galaxies in about three minutes, table, CSV and summary PDF
 * Built with a shared Tk window library (`finestra_comune.py` 1.1): text size 100–200 %, layout self-checked at three scales
 
 ## Tested on real data
 
-NGC 3198 (the classic flat curve): NFW V200 = 110.5 ± 2.0 km/s, c = 10.3 ± 1.1, Υ_disc = 0.46 (Li et al. 2020: 110.4, 10.4, 0.47); pseudo-isothermal r0 = 2.76 kpc, log ρ0 = −1.31 (Li: 2.75, −1.30). Over all 175 SPARC galaxies the fitted Burkert Υ_disc agrees with Li et al. 2020 with a median difference of −0.001 dex (scatter 0.12 dex). Best model by χ²: Burkert 89, pseudo-isothermal 56, NFW 27, MOND 3 galaxies. DDO 154: 87 % of the mass at the last radius is dark. Milky Way (Eilers et al. 2019 data): NFW M200 ≈ 6–10 × 10¹¹ M☉.
+NGC 3198 (the classic flat curve), Burkert halo with free distance and inclination: D = 14.70 Mpc, i = 73.6°, Υ_disc = 0.66, r0 = 9.94 kpc (Li et al. 2020: 14.69, 73.8, 0.66, 9.95); NFW χ²_red = 1.46 (Li: 1.46); Einasto rs = 13.8 kpc, α = 0.35 (Li: 13.6, 0.36). Over all 175 SPARC galaxies the fitted Burkert Υ_disc agrees with Li et al. 2020 with a median difference of 0.000 dex (scatter 0.115 dex). Best model by χ² (free D and i): Einasto 65, Burkert 48, pseudo-isothermal 48, NFW 8, MOND 6 galaxies. DDO 154: 87 % of the mass at the last radius is dark. Milky Way (author's SALSA points + Eilers et al. 2019, stars + gas): NFW M200 = 7.1 × 10¹¹ M☉ (Eilers et al.: 7.25 × 10¹¹).
 
 > **Language note.** The interface is in **Italian** (large, adjustable text); plots, PDF/PNG cards and scientific output are in **English**. Code comments are in Italian. The original Italian guide is [`LEGGIMI.txt`](LEGGIMI.txt).
 
-**Version:** 1.0 (2026-11-25). **Status:** first version; self-test 14/14 on the author's PC (window checked at 100/150/200 %).
+**Version:** 1.1 (2026-11-25). **Status:** self-test 18/18 on the author's PC (window checked at 100/150/200 %). Version 1.0 (same day): SPARC, M 33 and the Milky Way with four models.
 
 ## Quick start
 
@@ -36,7 +38,7 @@ python3 -m pip install -r requirements.txt
 
 python3 curve_rotazione.py --autotest             # self-test (downloads the catalogues on first run)
 python3 curve_rotazione.py --galassia NGC3198     # PDF/PNG card without the window
-python3 curve_rotazione.py --tutte                # all galaxies: CSV + summary PDF
+python3 curve_rotazione.py --tutte                # all galaxies: CSV + summary PDF (--ml libero|fisso, --di libere|fisse)
 python3 curve_rotazione.py                        # opens the window
 ```
 
@@ -55,7 +57,8 @@ Data are downloaded at run time from public services. If you publish results, pl
 * [SPARC](https://astroweb.case.edu/SPARC/) — Lelli, McGaugh & Schombert 2016, AJ 152, 157 (via the [VizieR](https://vizier.cds.unistra.fr/) Harvard mirror, J/AJ/152/157)
 * Li, Lelli, McGaugh & Schombert 2020, ApJS 247, 31 (VizieR J/ApJS/247/31)
 * Kam et al. 2017, AJ 154, 41 — M 33 (VizieR J/AJ/154/41)
-* Eilers, Hogg, Rix & Ness 2019, ApJ 871, 120 — Milky Way circular velocity (values from Table 1); Pouliasis, Di Matteo & Haywood 2017, A&A 598, A66 — Milky Way stellar model
+* Flynn 2026, rotation-curve corpus v7 ([Zenodo 19563417](https://zenodo.org/records/19563417), CC BY 4.0), with data from THINGS (de Blok et al. 2008, AJ 136, 2648), LITTLE THINGS (Oh et al. 2015, AJ 149, 180) and WALLABY DR2 (Deg et al. 2022, PASA 39, e059)
+* Eilers, Hogg, Rix & Ness 2019, ApJ 871, 120 — Milky Way circular velocity (values from Table 1); Pouliasis, Di Matteo & Haywood 2017, A&A 598, A66 — Milky Way stellar model; McMillan 2017, MNRAS 465, 76 — Milky Way gas discs
 * McGaugh, Lelli & Schombert 2016, PRL 117, 201101 — radial acceleration relation
 * [DESI Legacy Imaging Surveys](https://www.legacysurvey.org/) (DR10 and unWISE) and [NASA/GSFC SkyView](https://skyview.gsfc.nasa.gov/) (DSS2)
 * [SALSA radio telescopes](https://salsa.oso.chalmers.se/), Onsala Space Observatory — the author's own Milky Way observations

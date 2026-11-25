@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Curve di rotazione 1.0 – la materia che manca nelle galassie
+Curve di rotazione 1.1 – la materia che manca nelle galassie
 © 2026 Edoardo Battistel · licenza BSD-3
 
 Finestra costruita con la libreria comune finestra_comune.py 1.1.
@@ -11,6 +11,7 @@ Uso:
     python3 curve_rotazione.py --scala 200          dimensione del testo all'avvio
     python3 curve_rotazione.py --galassia NGC3198   scheda PDF + PNG di una galassia, senza finestra
     python3 curve_rotazione.py --tutte              adattamenti di tutte le galassie (CSV + PDF), senza finestra
+    (con --ml libero|fisso e --di libere|fisse)
 """
 import argparse
 import os
@@ -30,19 +31,24 @@ NOME = "Curve di rotazione"
 SCELTE_MODELLI = {
     "NFW + Burkert (cuspide e nucleo)": ("NFW", "Burkert"),
     "NFW + Burkert + MOND": ("NFW", "Burkert", "MOND"),
-    "Tutti e quattro i modelli": mc.MODELLI,
+    "NFW + Einasto (dalle simulazioni)": ("NFW", "Einasto"),
+    "Tutti e cinque i modelli": mc.MODELLI,
     "Solo NFW (cuspide)": ("NFW",),
     "Solo Burkert (nucleo)": ("Burkert",),
     "Solo isotermo pISO (nucleo)": ("pISO",),
+    "Solo Einasto (dalle simulazioni)": ("Einasto",),
     "Solo MOND (niente materia oscura)": ("MOND",),
     "Nessun modello (solo le misure)": (),
 }
+SCELTE_DI = {"Libere (come Li et al. 2020)": True, "Fisse (come pubblicate)": False}
 SCELTE_ML = {"Libero (vicino a 0,5)": "libero", "Fisso (dal contatore)": "fisso"}
 COMPONENTI = (("gas", "Gas (idrogeno ed elio)"), ("disco", "Disco di stelle"), ("bulbo", "Bulbo"),
               ("barioni", "Tutta la materia visibile"), ("alone", "Alone di materia oscura da solo"),
-              ("li", "Adattamenti pubblicati (Li et al. 2020)"), ("residui", "Residui sotto il grafico"))
+              ("li", "Adattamenti pubblicati (Li et al. 2020)"), ("altre", "Altre misure (THINGS, LITTLE THINGS)"),
+              ("residui", "Residui sotto il grafico"))
 BASE = dict(galassia="NGC3198", modelli="NFW + Burkert (cuspide e nucleo)", ml="Libero (vicino a 0,5)", yd=0.5,
-            componenti=["gas", "disco", "bulbo", "barioni", "residui"], csv_salsa="")
+            di="Libere (come Li et al. 2020)",
+            componenti=["gas", "disco", "bulbo", "barioni", "altre", "residui"], csv_salsa="")
 
 
 class Programma:
@@ -106,6 +112,10 @@ class Programma:
         self.cont = col.aggiungi(fc.Contatore(i, "Massa/luce fissa (a 3,6 µm)", 0.1, 2.0,
                                               float(self.imp.get("yd", 0.5)), passo=0.05,
                                               comando=lambda v: self._cambio("yd", v, ricalcola=True)))
+        di = self.imp.get("di") if self.imp.get("di") in SCELTE_DI else BASE["di"]
+        self.t_di = col.aggiungi(fc.RigaTendina(i, "Distanza e inclinazione", list(SCELTE_DI),
+                                                tk.StringVar(f.radice, value=di), larga=True,
+                                                comando=lambda v: self._cambio("di", v, ricalcola=True)))
         self.suggerimento = col.aggiungi(fc.Suggerimento(i))
         # spunte delle componenti in una cornice che si può nascondere (regola 13)
         cornice = ttk.LabelFrame(i, text="Cosa mostrare", padding=(8, 4, 8, 4))
@@ -146,22 +156,26 @@ class Programma:
                                         ("p", "Parametri dell'alone", "V200 = 110,5 ± 2,0 km/s, c = 10,3 ± 1,1, M200 = 4,3e11")],
                                   altezza=5)
         self.tab_par.grid(row=1, column=0, sticky="nsew")
+        self._non_allargare(self.tab_par)
         tut = sc.aggiungi("Tutte", padding=8)
         tut.columnconfigure(0, weight=1)
         tut.rowconfigure(1, weight=2)
         tut.rowconfigure(2, weight=3)
-        self.testo_tutte = fc.Etichetta(tut, "Premi «Tutte le galassie» per adattare i quattro modelli a tutte le "
-                                             "galassie (circa mezzo minuto). Un clic su una riga apre la galassia.")
+        self.testo_tutte = fc.Etichetta(tut, "Premi «Tutte le galassie» per adattare i cinque modelli a tutte le "
+                                             "galassie (uno o due minuti). Un clic su una riga apre la galassia.")
         self.testo_tutte.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         self.tab_tutte = fc.Tabella(tut, [("g", "Galassia", "UGC 2885 – galassia di Rubin"), ("q", "Qualità", "Qual."),
                                           ("v", "V piatta", "999 km/s"), ("b", "Migliore", "Burkert"),
                                           ("nfw", "χ² NFW", "999,99"), ("bur", "χ² Burkert", "999,99"),
-                                          ("iso", "χ² pISO", "999,99"), ("mond", "χ² MOND", "999,99"),
+                                          ("iso", "χ² pISO", "999,99"), ("ein", "χ² Einasto", "999,99"),
+                                          ("mond", "χ² MOND", "999,99"),
                                           ("ml", "M/L (Burkert)", "0,00"), ("fdm", "Materia oscura", "100 %")],
-                                    altezza=6)
+                                    altezza=4)
         self.tab_tutte.grid(row=1, column=0, sticky="nsew")
+        self._non_allargare(self.tab_tutte)
         self.tab_tutte.albero.bind("<<TreeviewSelect>>", self._riga_tutte, add="+")
-        self.g_tutte = fc.Grafico(tut, nome_file="riassunto_tutte")
+        # senza la sua fila di pulsanti: al 200 % non c'era posto in altezza (autotest 1.1); il grafico è nel PDF di riepilogo
+        self.g_tutte = fc.Grafico(tut, nome_file="riassunto_tutte", pulsanti=False)
         self.g_tutte.grid(row=2, column=0, sticky="nsew", pady=(6, 0))
         note = fc.ColonnaScorrevole(sc.aggiungi("Note"), caratteri=0)
         note.pack(fill="both", expand=True)
@@ -177,6 +191,14 @@ class Programma:
         b.pulsante("Apri la cartella dei risultati", self.apri_cartella)
         b.pulsante("Esci", f.chiudi)
         f.radice.after(400, self._aggiorna_suggerimento)
+
+    @staticmethod
+    def _non_allargare(tabella):
+        """Autotest 1.1 al 150 %: la tabella «Tutte» (10 colonne) chiedeva più larghezza dello schermo, la finestra
+        si allargava a 3072 px e la scheda finiva sotto la barra in basso (pulsanti del grafico coperti). La tabella
+        prende lo spazio che le dà la griglia e si scorre in orizzontale."""
+        tabella.configure(width=200, height=120)
+        tabella.grid_propagate(False)
 
     # ------------------------------------------------------------------ messaggi
     def avvisa(self, testo):
@@ -200,7 +222,7 @@ class Programma:
 
     # ------------------------------------------------------------------ dati
     def carica(self):
-        self.avvisa("carico il catalogo (SPARC, M 33, Via Lattea, Li et al. 2020)…")
+        self.avvisa("carico il catalogo (SPARC, THINGS, LITTLE THINGS, WALLABY, M 33, Via Lattea, Li et al. 2020)…")
         csv_salsa = self.imp.get("csv_salsa") or None
         self.fc.Lavoro(self.f, lambda avvisa, fermo: mc.carica_catalogo(avvisa, self.rete, csv_salsa),
                        al_termine=self._caricato, al_errore=lambda t: self._errore("Dati non caricati", t),
@@ -242,6 +264,9 @@ class Programma:
     def ml(self):
         return SCELTE_ML.get(self.t_ml.get(), "libero")
 
+    def di(self):
+        return SCELTE_DI.get(self.t_di.get(), True)
+
     def componenti(self):
         return tuple(k for k, s in self.spunte.items() if s.get())
 
@@ -262,18 +287,19 @@ class Programma:
             return
         self.pendente = False
         g = self.cat.galassie[self.chiave]
-        ml, yd = self.ml(), self._yd()
+        ml, yd, di = self.ml(), self._yd(), self.di()
         chiave = self.chiave
         self.f.stato(self.breve(f"adatto i modelli a {g['nome']}…"))
-        self.calcolo = self.fc.Lavoro(self.f, lambda avvisa, fermo: (chiave, ml, yd, mc.adatta_tutti(g, ml, yd or mc.ML_DISCO)),
+        self.calcolo = self.fc.Lavoro(self.f, lambda avvisa, fermo: (chiave, ml, yd, di, mc.adatta_tutti(g, ml, yd or mc.ML_DISCO,
+                                                                                                    libere_Di=di)),
                                       al_termine=self._calcolato,
                                       al_errore=lambda t: self._errore("Calcolo non riuscito", t),
                                       al_messaggio=self.avvisa)
 
     def _calcolato(self, valore):
-        chiave, ml, yd, ris = valore
-        self.ris[(chiave, ml, yd)] = ris
-        if self.pendente or chiave != self.chiave or ml != self.ml() or yd != self._yd():
+        chiave, ml, yd, di, ris = valore
+        self.ris[(chiave, ml, yd, di)] = ris
+        if self.pendente or chiave != self.chiave or ml != self.ml() or yd != self._yd() or di != self.di():
             self.calcola()
             return
         self._mostra()
@@ -283,7 +309,7 @@ class Programma:
         return self.cont.get() if self.ml() == "fisso" else None
 
     def risultati_attuali(self):
-        return self.ris.get((self.chiave, self.ml(), self._yd()))
+        return self.ris.get((self.chiave, self.ml(), self._yd(), self.di()))
 
     def _mostra(self):
         ris = self.risultati_attuali()
@@ -323,7 +349,7 @@ class Programma:
             e = r["err"].get("Yd")
             ml = "–" if g.get("massa_fissa") or g.get("senza_barioni") else (
                 f"{r['p']['Yd']:.2f}" + (f" ± {e:.2f}" if e is not None and np.isfinite(e) else "")).replace(".", ",")
-            q = lig.get({"NFW": "NFW-Flat", "Burkert": "Burkert-Flat", "pISO": "pISO-Flat"}.get(m, ""))
+            q = lig.get(mc.NOMI_LI.get(m, ""))
             tli = f"χ² {q['chi2']:.2f} · M/L {q['Ydisk']:.2f}".replace(".", ",") if q else "–"
             fdm = "–" if g.get("senza_barioni") else f"{100 * r['fdm_ultimo']:.0f} %"
             self.tab_par.inserisci([m, f"{r['chi2_rid']:.2f}".replace(".", ","), ml, fdm, tli, mc.testo_parametri(r)])
@@ -350,7 +376,8 @@ class Programma:
         if g is not None and g.get("massa_fissa"):
             testo = "Via Lattea: le masse delle stelle vengono dal modello di Pouliasis et al. 2017, il contatore non serve."
         elif g is not None and g.get("senza_barioni"):
-            testo = "M 33: mancano le componenti visibili, tutta la massa va all'alone; il contatore non serve."
+            testo = (f"{g['nome']}: per questa galassia ({g['fonte'].split(' (')[0]}) mancano le componenti visibili: "
+                     "tutta la massa va all'alone e il contatore non serve.")
         elif self.ml() == "libero":
             testo = "Con «Libero» il programma sceglie il rapporto massa/luce migliore vicino a 0,5; il contatore conta solo con «Fisso»."
         self.suggerimento.mostra(testo)
@@ -391,7 +418,7 @@ class Programma:
     def tutte(self, al_termine=None):
         if not self.cat or (self.lavoro_tutte is not None and self.lavoro_tutte.attivo):
             return
-        ml = self.ml()
+        ml, di = self.ml(), self.di()
 
         def fine(tutti):
             self.tutti = tutti
@@ -399,9 +426,9 @@ class Programma:
             self.schede.select(self.schede.tabs()[4])
             if al_termine:
                 al_termine()
-        self.avvisa("adatto i quattro modelli a tutte le galassie…")
+        self.avvisa("adatto i cinque modelli a tutte le galassie…")
         self.lavoro_tutte = self.fc.Lavoro(
-            self.f, lambda avvisa, fermo: mc.adatta_catalogo(self.cat, ml, avvisa, fermo), al_termine=fine,
+            self.f, lambda avvisa, fermo: mc.adatta_catalogo(self.cat, ml, avvisa, fermo, libere_Di=di), al_termine=fine,
             al_errore=lambda t: self._errore("Calcolo non riuscito", t), al_messaggio=self.avvisa,
             pulsanti=[self.b_tutte, self.b_salva_tutte, self.b_salsa])
 
@@ -423,14 +450,12 @@ class Programma:
             alb.insert("", "end", iid=k, values=[cat.etichetta(k), g["Q"],
                                                  f"{g['Vflat']:.0f} km/s" if g["Vflat"] > 0 else "–",
                                                  b["modello"] if b else "–", chi("NFW"), chi("Burkert"), chi("pISO"),
-                                                 chi("MOND"), ml, fdm])
+                                                 chi("Einasto"), chi("MOND"), ml, fdm])
         st = mc.statistiche_tutte(cat, tutti)
         v = st["vincitori"]
         self.testo_tutte.configure(text=(
-            f"{st['n']} galassie SPARC. Il modello migliore è NFW per {v['NFW']}, Burkert per {v['Burkert']}, "
-            f"isotermo per {v['pISO']}, MOND per {v['MOND']}. χ² ridotto mediano: "
-            + ", ".join(f"{m} {c:.2f}".replace(".", ",") for m, c in st["chi2_mediano"].items())
-            + ". Un clic su una riga apre la galassia."))
+            f"{len(tutti)} galassie. Modello migliore fra le {st['n']} SPARC: NFW {v['NFW']}, Burkert {v['Burkert']}, "
+            f"isotermo {v['pISO']}, Einasto {v['Einasto']}, MOND {v['MOND']}. Clic su una riga = apre la galassia."))
         self.g_tutte.disegna(lambda fig: mc.disegna_riassunto_tutte(fig, cat, tutti))
 
     def _riga_tutte(self, _evento=None):
@@ -522,13 +547,13 @@ def senza_finestra(args):
             print(f"Galassia {args.galassia} non trovata. Esempi: NGC3198, DDO154, M33, VIA_LATTEA")
             return 1
         g = cat.galassie[trovate[0]]
-        ris = mc.adatta_tutti(g, args.ml)
+        ris = mc.adatta_tutti(g, args.ml, libere_Di=args.di == "libere")
         print(mc.testo_risultati(g, ris, cat.li.get(g["chiave"]), "en"))
         imgs = mc.immagini(g, print, True)
         for p in mc.salva_scheda(g, ris, cat.li.get(g["chiave"]), imgs, cartella):
             print("salvato:", p)
     if args.tutte:
-        tutti = mc.adatta_catalogo(cat, args.ml, print)
+        tutti = mc.adatta_catalogo(cat, args.ml, print, libere_Di=args.di == "libere")
         print("salvato:", mc.salva_csv_tutte(cat, tutti, cartella))
         print("salvato:", mc.salva_pdf_tutte(cat, tutti, cartella))
     return 0
@@ -567,7 +592,10 @@ def autotest(scala=None):
     else:
         ok, n = mc.autotest_motore(cat=p.cat)
         esiti.append(("calcoli sui dati veri", ok == n, f"{ok}/{n}"))
-        for k in ("NGC3198", "VIA_LATTEA", "M33", "DDO154", "NGC7331"):
+        wallaby = next((k for k in p.cat.chiavi_ordinate() if k.startswith("WALLABY")), None)
+        for k in ("NGC3198", "VIA_LATTEA", "M33", "DDO154", "NGC7331", "NGC3031", "WLM", wallaby):
+            if k is None:
+                continue
             if k not in p.cat.galassie:
                 continue
             p.seleziona(k)
@@ -584,6 +612,11 @@ def autotest(scala=None):
             p.t_modelli.set(nome)
             p._cambio("modelli", nome)
             fc.aspetta(r, 0.15)
+        p.t_di.set("Fisse (come pubblicate)")
+        p._cambio("di", p.t_di.get(), ricalcola=True)
+        esiti.append(("distanza e inclinazione fisse", attendi(lambda: p.risultati_attuali() is not None, 60, "D/i fisse"), ""))
+        p.t_di.set(BASE["di"])
+        p._cambio("di", BASE["di"], ricalcola=True)
         p.t_ml.set(BASE["ml"])
         p._cambio("ml", BASE["ml"], ricalcola=True)
         p.t_modelli.set(BASE["modelli"])
@@ -606,7 +639,7 @@ def autotest(scala=None):
         buono = attendi(lambda: p.lavoro_salva is not None and not p.lavoro_salva.attivo, 400, "tutte le galassie")
         buono = buono and (p.cartella / "rotation_curves_summary.pdf").exists() and \
             (p.cartella / "halo_fits_all_galaxies.csv").exists()
-        esiti.append(("tutte le galassie (CSV + PDF)", buono and p.tutti is not None and len(p.tutti) >= 170,
+        esiti.append(("tutte le galassie (CSV + PDF)", buono and p.tutti is not None and len(p.tutti) >= 400,
                       f"{len(p.tutti or {})} galassie in {time.time() - t0:.0f} s"))
         if p.tutti:
             st = mc.statistiche_tutte(p.cat, p.tutti)
@@ -644,6 +677,8 @@ def main():
     ap.add_argument("--galassia")
     ap.add_argument("--tutte", action="store_true")
     ap.add_argument("--ml", choices=("libero", "fisso"), default="libero")
+    ap.add_argument("--di", choices=("libere", "fisse"), default="libere",
+                    help="distanza e inclinazione libere entro gli errori (come Li+2020) o fisse")
     ap.add_argument("--cartella")
     args = ap.parse_args()
     scala = args.scala / 100 if args.scala else None
