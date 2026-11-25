@@ -1,0 +1,58 @@
+CURVE DI ROTAZIONE 1.0 – la materia che manca nelle galassie
+© 2026 Edoardo Battistel · licenza BSD-3
+
+Che cosa fa
+-----------
+Mostra le curve di rotazione di 177 galassie e quanta massa manca rispetto a quella che si vede:
+  - 175 galassie del catalogo SPARC (Lelli, McGaugh e Schombert 2016): velocità misurate dal gas
+    (21 cm e Hα) e componenti visibili (gas, disco e bulbo dalle immagini Spitzer a 3,6 µm);
+  - M 33, Galassia del Triangolo (Kam et al. 2017; solo la curva, senza componenti visibili);
+  - la Via Lattea: la misura di Edoardo con SALSA (ultimo curva_di_rotazione.csv del programma
+    Idrogeno) + Eilers et al. 2019 (5–25 kpc); stelle dal modello I di Pouliasis et al. 2017.
+Per ogni galassia adatta quattro modelli: aloni di materia oscura NFW (cuspide), Burkert e isotermo
+(nucleo) e MOND (niente materia oscura), con il rapporto massa/luce del disco libero (vicino a 0,5)
+o fisso. Confronta con gli adattamenti pubblicati da Li et al. 2020. Grafici d'insieme: Tully-Fisher
+barionica, relazione delle accelerazioni radiali (McGaugh et al. 2016), frazione di materia oscura.
+Immagini: Legacy Survey DR10 (ottico) e unWISE (infrarosso); fuori dall'area di Legacy, DSS2.
+
+Schede: Curva · Insieme · Immagini · Parametri · Tutte · Note (spiegazioni) · Registro.
+Uscite (in inglese) in ~/Scrivania/Astronomia/Curve_rotazione/Risultati/<data_ora>/:
+  <galassia>_rotation_curve.pdf e .png, halo_fits_all_galaxies.csv, rotation_curves_summary.pdf.
+
+Dati e rete
+-----------
+I cataloghi stanno in ~/Scrivania/Astronomia/Curve_rotazione/cache/ (la prima volta li copia dalla
+cartella della prova di rete o li scarica: VizieR di Harvard, con ripiego sul sito di SPARC).
+Le immagini si scaricano solo quando si apre una galassia e restano nella cache.
+Ogni richiesta ha un tempo massimo; solo IPv4.
+
+Comandi
+-------
+  python3 curve_rotazione.py                    finestra
+  python3 curve_rotazione.py --autotest         prove dei calcoli, delle galassie, dei salvataggi
+                                                e della finestra a 100/150/200 % (libreria comune)
+  python3 curve_rotazione.py --scala 200        dimensione del testo all'avvio
+  python3 curve_rotazione.py --galassia NGC3198 scheda PDF + PNG senza finestra (anche M33, VIA_LATTEA)
+  python3 curve_rotazione.py --tutte            tutte le galassie: CSV + PDF senza finestra
+
+Compilare e installare
+----------------------
+  cd ~/Claude/Astropy/programma_curve_rotazione/versione_1.0
+  bash crea_eseguibile_ubuntu.sh 2>&1 | tee ~/Claude/Astropy/curve_rotazione_compila.txt
+Fa l'autotest, crea dist/CurveRotazione, rifà l'autotest sull'eseguibile e lo installa nel menu
+e sulla Scrivania (StartupWMClass=Curverotazione).
+
+File
+----
+  curve_rotazione.py    finestra (libreria comune finestra_comune.py 1.1, copiata qui)
+  motore_curve.py       dati, modelli di massa, adattamenti, grafici, PDF e CSV
+  finestra_comune.py    libreria comune delle finestre, versione 1.1 (non modificare qui)
+  crea_icona.py         disegna curve_rotazione.png / .ico
+  crea_eseguibile_ubuntu.sh
+
+Fonti
+-----
+Lelli, McGaugh & Schombert 2016, AJ 152, 157 (SPARC) · Li, Lelli, McGaugh & Schombert 2020, ApJS 247, 31 ·
+McGaugh, Lelli & Schombert 2016, PRL 117, 201101 · Kam et al. 2017, AJ 154, 41 (M 33) ·
+Eilers, Hogg, Rix & Ness 2019, ApJ 871, 120 · Pouliasis, Di Matteo & Haywood 2017, A&A 598, A66 ·
+Navarro, Frenk & White 1996 · Burkert 1995 · Milgrom 1983.

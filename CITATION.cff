@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below, and credit the data providers listed in README.md."
+title: "Galaxy Rotation Curves (Curve di rotazione): visible and dark matter in 177 galaxies and in the Milky Way"
+authors:
+  - family-names: Battistel
+    given-names: Edoardo
+version: "1.0"
+date-released: 2026-11-25
+license: BSD-3-Clause
+repository-code: "https://github.com/EDOKILLER/galaxy-rotation-curves"
+keywords:
+  - rotation curves
+  - dark matter
+  - SPARC
+  - NFW
+  - Burkert
+  - MOND
+  - Tully-Fisher
+  - radial acceleration relation
+  - Milky Way
